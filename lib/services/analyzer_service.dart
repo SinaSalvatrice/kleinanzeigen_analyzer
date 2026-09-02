@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -12,10 +13,30 @@ class AnalyzerService {
   final http.Client _client;
 
   Future<ListingDraft> analyze(ListingDraft input) async {
+    try {
+      return await _analyzeInternal(input);
+    } catch (error) {
+      return ListingDraft(
+        title: 'Analysefehler',
+        description: 'Die Analyse konnte nicht ausgeführt werden.\n\n${_friendlyError(error)}',
+        category: input.category,
+        condition: input.condition,
+        notes: input.notes,
+        brand: input.brand,
+        model: input.model,
+        confidence: 0,
+        identification: 'Analyse fehlgeschlagen',
+        researchSummary: _friendlyError(error),
+        imagePaths: List<String>.from(input.imagePaths),
+      );
+    }
+  }
+
+  Future<ListingDraft> _analyzeInternal(ListingDraft input) async {
     final apiKey = Platform.environment['OPENAI_API_KEY'];
     if (apiKey == null || apiKey.trim().isEmpty) {
       throw StateError(
-        'OPENAI_API_KEY fehlt. Starte die App aus einem Terminal, in dem die Umgebungsvariable gesetzt ist.',
+        'OPENAI_API_KEY fehlt. Die App muss aus demselben PowerShell-Fenster gestartet werden, in dem der Key gesetzt wurde.',
       );
     }
 
@@ -26,7 +47,13 @@ class AnalyzerService {
       },
     ];
 
+    var usableImages = 0;
     for (final imagePath in input.imagePaths.take(8)) {
+      final extension = p.extension(imagePath).toLowerCase();
+      if (!{'.jpg', '.jpeg', '.png', '.webp'}.contains(extension)) {
+        continue;
+      }
+
       final file = File(imagePath);
       if (!await file.exists()) continue;
       final bytes = await file.readAsBytes();
@@ -35,92 +62,107 @@ class AnalyzerService {
         'image_url': 'data:${_mimeType(imagePath)};base64,${base64Encode(bytes)}',
         'detail': 'high',
       });
+      usableImages++;
     }
 
-    final response = await _client.post(
-      Uri.parse('https://api.openai.com/v1/responses'),
-      headers: {
-        'Authorization': 'Bearer $apiKey',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'model': 'gpt-5.6-terra',
-        'tools': [
-          {'type': 'web_search'}
-        ],
-        'input': [
-          {
-            'role': 'user',
-            'content': content,
-          }
-        ],
-        'text': {
-          'format': {
-            'type': 'json_schema',
-            'name': 'kleinanzeigen_analysis',
-            'strict': true,
-            'schema': {
-              'type': 'object',
-              'additionalProperties': false,
-              'properties': {
-                'identification': {'type': 'string'},
-                'brand': {'type': 'string'},
-                'model': {'type': 'string'},
-                'category': {'type': 'string'},
-                'condition': {'type': 'string'},
-                'confidence': {'type': 'number'},
-                'price_fast': {'type': 'number'},
-                'price_realistic': {'type': 'number'},
-                'price_listing': {'type': 'number'},
-                'title': {'type': 'string'},
-                'description': {'type': 'string'},
-                'research_summary': {'type': 'string'},
-                'sources': {
-                  'type': 'array',
-                  'items': {
-                    'type': 'object',
-                    'additionalProperties': false,
-                    'properties': {
-                      'title': {'type': 'string'},
-                      'url': {'type': 'string'},
-                      'price': {'type': ['number', 'null']},
-                      'note': {'type': 'string'},
+    if (usableImages == 0 &&
+        input.brand.trim().isEmpty &&
+        input.model.trim().isEmpty &&
+        input.notes.trim().isEmpty) {
+      throw StateError(
+        'Es fehlen verwertbare Eingaben. Bitte mindestens ein JPG/PNG/WebP-Foto oder Angaben zum Gegenstand hinzufügen.',
+      );
+    }
+
+    final response = await _client
+        .post(
+          Uri.parse('https://api.openai.com/v1/responses'),
+          headers: {
+            'Authorization': 'Bearer ${apiKey.trim()}',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'model': 'gpt-5.6-terra',
+            'tools': [
+              {'type': 'web_search'}
+            ],
+            'input': [
+              {
+                'role': 'user',
+                'content': content,
+              }
+            ],
+            'text': {
+              'format': {
+                'type': 'json_schema',
+                'name': 'kleinanzeigen_analysis',
+                'strict': true,
+                'schema': {
+                  'type': 'object',
+                  'additionalProperties': false,
+                  'properties': {
+                    'identification': {'type': 'string'},
+                    'brand': {'type': 'string'},
+                    'model': {'type': 'string'},
+                    'category': {'type': 'string'},
+                    'condition': {'type': 'string'},
+                    'confidence': {'type': 'number'},
+                    'price_fast': {'type': 'number'},
+                    'price_realistic': {'type': 'number'},
+                    'price_listing': {'type': 'number'},
+                    'title': {'type': 'string'},
+                    'description': {'type': 'string'},
+                    'research_summary': {'type': 'string'},
+                    'sources': {
+                      'type': 'array',
+                      'items': {
+                        'type': 'object',
+                        'additionalProperties': false,
+                        'properties': {
+                          'title': {'type': 'string'},
+                          'url': {'type': 'string'},
+                          'price': {'type': ['number', 'null']},
+                          'note': {'type': 'string'},
+                        },
+                        'required': ['title', 'url', 'price', 'note'],
+                      },
                     },
-                    'required': ['title', 'url', 'price', 'note'],
                   },
+                  'required': [
+                    'identification',
+                    'brand',
+                    'model',
+                    'category',
+                    'condition',
+                    'confidence',
+                    'price_fast',
+                    'price_realistic',
+                    'price_listing',
+                    'title',
+                    'description',
+                    'research_summary',
+                    'sources',
+                  ],
                 },
-              },
-              'required': [
-                'identification',
-                'brand',
-                'model',
-                'category',
-                'condition',
-                'confidence',
-                'price_fast',
-                'price_realistic',
-                'price_listing',
-                'title',
-                'description',
-                'research_summary',
-                'sources',
-              ],
+              }
             },
-          }
-        },
-      }),
-    );
+          }),
+        )
+        .timeout(const Duration(seconds: 90));
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      final detail = _apiErrorMessage(response.body);
       throw HttpException(
-        'OpenAI API Fehler ${response.statusCode}: ${response.body}',
+        'OpenAI API ${response.statusCode}${detail.isEmpty ? '' : ': $detail'}',
       );
     }
 
     final payload = jsonDecode(response.body) as Map<String, dynamic>;
     final outputText = _extractOutputText(payload);
     if (outputText == null || outputText.trim().isEmpty) {
-      throw const FormatException('Die Analyse enthielt keinen auswertbaren Text.');
+      throw const FormatException(
+        'Die API hat geantwortet, aber kein auswertbares Analyse-Ergebnis geliefert.',
+      );
     }
 
     final data = jsonDecode(outputText) as Map<String, dynamic>;
@@ -196,14 +238,48 @@ Wichtig: Sichtbare Schäden dürfen beschrieben werden, aber Funktionsfähigkeit
     return null;
   }
 
+  String _apiErrorMessage(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        final error = decoded['error'];
+        if (error is Map<String, dynamic>) {
+          return error['message']?.toString() ?? '';
+        }
+      }
+    } catch (_) {
+      // Fall back to a shortened raw response below.
+    }
+    final trimmed = body.trim();
+    if (trimmed.length <= 500) return trimmed;
+    return '${trimmed.substring(0, 500)}…';
+  }
+
+  String _friendlyError(Object error) {
+    if (error is TimeoutException) {
+      return 'Zeitüberschreitung nach 90 Sekunden. Internetverbindung bzw. API erneut prüfen.';
+    }
+    if (error is SocketException) {
+      return 'Keine Verbindung zur API: ${error.message}';
+    }
+    if (error is StateError) {
+      return error.message;
+    }
+    if (error is HttpException) {
+      return error.message;
+    }
+    if (error is FormatException) {
+      return 'Antwortformat ungültig: ${error.message}';
+    }
+    return '$error';
+  }
+
   String _mimeType(String path) {
     switch (p.extension(path).toLowerCase()) {
       case '.png':
         return 'image/png';
       case '.webp':
         return 'image/webp';
-      case '.bmp':
-        return 'image/bmp';
       case '.jpg':
       case '.jpeg':
       default:
