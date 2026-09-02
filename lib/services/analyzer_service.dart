@@ -147,7 +147,9 @@ class AnalyzerService {
       priceFast: (data['price_fast'] as num?)?.toDouble(),
       priceRealistic: (data['price_realistic'] as num?)?.toDouble(),
       priceListing: (data['price_listing'] as num?)?.toDouble(),
-      confidence: ((data['confidence'] as num?)?.toDouble() ?? 0).clamp(0, 1),
+      confidence: ((data['confidence'] as num?)?.toDouble() ?? 0.0)
+          .clamp(0.0, 1.0)
+          .toDouble(),
       identification: data['identification']?.toString() ?? '',
       researchSummary: data['research_summary']?.toString() ?? '',
       imagePaths: List<String>.from(input.imagePaths),
