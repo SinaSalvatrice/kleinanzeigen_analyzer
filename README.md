@@ -6,12 +6,16 @@ Kleine Flutter-Desktop-App zum Identifizieren, Recherchieren, Bewerten und Formu
 
 - mehrere Produktfotos per Drag & Drop oder Dateiauswahl laden
 - bekannte Fakten ergänzen: Hersteller, Modell, Kategorie, Zustand, Maße/Lieferumfang
+- OpenAI API-Key direkt in der App hinterlegen
+- API-Key lokal über `flutter_secure_storage` speichern
+- Verbindungstest direkt im API-Dialog
+- Zeilenumbrüche und Leerzeichen beim Einfügen des Keys automatisch entfernen
 - echte Bildanalyse über die OpenAI Responses API
 - Websuche während derselben Analyse für Vergleichsangebote
 - Preisansicht mit `Schnell`, `Realistisch` und `Inserat`
 - Confidence-Wert für Identifikation + Preisbasis
-- editierbarer Titel und Beschreibung
-- Rechercheergebnis und verwendete Quellen im Datenmodell getrennt vom Listing
+- editierbarer Titel und Beschreibung mit Kopierfunktion
+- Recherche-Zusammenfassung und verwendete Quellen direkt in der UI
 
 Die Analyse darf Unsicherheiten nicht als Fakten ausgeben. Aktive Angebotspreise werden ausdrücklich nicht automatisch als echte Verkaufspreise behandelt.
 
@@ -22,30 +26,24 @@ git clone https://github.com/SinaSalvatrice/kleinanzeigen_analyzer.git
 cd kleinanzeigen_analyzer
 flutter create . --platforms=windows
 flutter pub get
-```
-
-Vor dem Start muss ein OpenAI API-Key als Umgebungsvariable vorhanden sein.
-
-Nur für das aktuelle PowerShell-Fenster:
-
-```powershell
-$env:OPENAI_API_KEY="DEIN_KEY"
 flutter run -d windows
 ```
 
-Oder dauerhaft für den Benutzer:
+`flutter create . --platforms=windows` ergänzt die generierten Windows-Runner-Dateien des Flutter-Projekts.
 
-```powershell
-[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "DEIN_KEY", "User")
-```
+### API-Key
 
-Danach ein neues Terminal öffnen und starten:
+Nach dem Start oben rechts auf `API-Key` klicken.
 
-```powershell
-flutter run -d windows
-```
+Dort kann der OpenAI API-Key:
 
-`flutter create . --platforms=windows` ergänzt nur die generierten Windows-Runner-Dateien des Flutter-Projekts.
+- eingefügt
+- automatisch bereinigt
+- gespeichert
+- getestet
+- wieder entfernt oder ersetzt werden
+
+Der Key wird nicht im Repository gespeichert. Eine bestehende Windows-Umgebungsvariable `OPENAI_API_KEY` wird weiterhin als Fallback unterstützt.
 
 ## Analyse-Pipeline
 
@@ -59,9 +57,10 @@ flutter run -d windows
 
 ## Noch offen
 
-- Recherche-Zusammenfassung und Quellen vollständig in der UI anzeigen
-- Fehlerdialoge statt ungefangener API-Fehler
+- Analysefortschritt feiner aufschlüsseln
 - gespeicherte Artikel / Verlauf
+- Korrektur einer Identifikation mit anschließender Neurecherche
+- Hinweise auf fehlende Fotos, Typenschilder oder wichtige Produktdetails
 - optional zusätzliche Preisquellen oder spezialisierte APIs
 
 ## Grundsatz
