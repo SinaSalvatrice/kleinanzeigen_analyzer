@@ -6,11 +6,17 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
 import '../models/listing_draft.dart';
+import 'api_key_service.dart';
 
 class AnalyzerService {
-  AnalyzerService({http.Client? client}) : _client = client ?? http.Client();
+  AnalyzerService({
+    http.Client? client,
+    ApiKeyService? apiKeyService,
+  })  : _client = client ?? http.Client(),
+        _apiKeyService = apiKeyService ?? ApiKeyService();
 
   final http.Client _client;
+  final ApiKeyService _apiKeyService;
 
   Future<ListingDraft> analyze(ListingDraft input) async {
     try {
@@ -18,7 +24,8 @@ class AnalyzerService {
     } catch (error) {
       return ListingDraft(
         title: 'Analysefehler',
-        description: 'Die Analyse konnte nicht ausgeführt werden.\n\n${_friendlyError(error)}',
+        description:
+            'Die Analyse konnte nicht ausgeführt werden.\n\n${_friendlyError(error)}',
         category: input.category,
         condition: input.condition,
         notes: input.notes,
@@ -33,10 +40,10 @@ class AnalyzerService {
   }
 
   Future<ListingDraft> _analyzeInternal(ListingDraft input) async {
-    final apiKey = Platform.environment['OPENAI_API_KEY'];
-    if (apiKey == null || apiKey.trim().isEmpty) {
+    final apiKey = await _apiKeyService.read();
+    if (apiKey == null || apiKey.isEmpty) {
       throw StateError(
-        'OPENAI_API_KEY fehlt. Die App muss aus demselben PowerShell-Fenster gestartet werden, in dem der Key gesetzt wurde.',
+        'Kein OpenAI API-Key hinterlegt. Öffne oben rechts die API-Einstellungen und speichere dort deinen Key.',
       );
     }
 
@@ -59,7 +66,8 @@ class AnalyzerService {
       final bytes = await file.readAsBytes();
       content.add({
         'type': 'input_image',
-        'image_url': 'data:${_mimeType(imagePath)};base64,${base64Encode(bytes)}',
+        'image_url':
+            'data:${_mimeType(imagePath)};base64,${base64Encode(bytes)}',
         'detail': 'high',
       });
       usableImages++;
@@ -78,7 +86,7 @@ class AnalyzerService {
         .post(
           Uri.parse('https://api.openai.com/v1/responses'),
           headers: {
-            'Authorization': 'Bearer ${apiKey.trim()}',
+            'Authorization': 'Bearer $apiKey',
             'Content-Type': 'application/json',
           },
           body: jsonEncode({
@@ -152,6 +160,16 @@ class AnalyzerService {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final detail = _apiErrorMessage(response.body);
+      if (response.statusCode == 401) {
+        throw const HttpException(
+          'API-Key ungültig oder widerrufen. Bitte in den API-Einstellungen prüfen.',
+        );
+      }
+      if (response.statusCode == 429) {
+        throw const HttpException(
+          'OpenAI meldet ein Limit- oder Guthabenproblem. Bitte API-Billing und Limits prüfen.',
+        );
+      }
       throw HttpException(
         'OpenAI API ${response.statusCode}${detail.isEmpty ? '' : ': $detail'}',
       );
